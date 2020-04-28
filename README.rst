@@ -122,3 +122,33 @@ After a while both configuration will be applied to the cluster.
   NAME      CONFIG                                             UPDATED   UPDATING   DEGRADED   MACHINECOUNT   READYMACHINECOUNT   UPDATEDMACHINECOUNT   DEGRADEDMACHINECOUNT   AGE
   master    rendered-master-36f5d702f485cde72df754013e17937f   True      False      False      3              3                   3                     0                      4d5h
   worker    rendered-worker-ec7bab1743d5d2a88bed9cf1280ff9f1   True      False      False      3              3                   3                     0                      4d5h
+
+DEPLOY THE SIGNATURE SERVER
+---------------------------
+
+Container images signatures are served by a simple HTTP server (nginx) with a couple service APIs baked in.
+
+1) Create a new project on OCP and set up the correct SCC for the sigserver service account
+
+.. code:: bash
+
+  # oc new-project signature-server
+  # oc adm policy add-scc-to-user anyuid system:serviceaccount:signature-server:signature-sa
+
+2) Create the virtual host config map:
+
+.. code:: bash
+
+  # oc create configmap nginx-sigstore-vhost --from-file=nginx/sigstore.conf
+
+3) Create the API configmap
+
+.. code:: bash
+
+  # oc create configmap lua-api-sources --from-file=api/context_body.lua --from-file=api/signature_upload.lua
+
+4) Deploy the signature server
+
+.. code:: bash
+
+  # oc create -f components/signature-server-deploymentconfig.yaml
