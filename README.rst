@@ -152,3 +152,32 @@ Container images signatures are served by a simple HTTP server (nginx) with a co
 .. code:: bash
 
   # oc create -f components/signature-server-deploymentconfig.yaml
+
+FETCH AND TEST IMAGE SIGNATURE
+------------------------------
+
+This test makes use of three different small container images, to demonstrate these three use cases:
+
+- A Correctly Signed image (signed with the approved and configured GPG key)
+- An Image that has no signature
+- An Images that has been signed with an unknown/wrong GPG key
+
+1) Upload the image without signature to nexus
+
+.. code:: bash
+
+  # skopeo copy --dest-creds=<username>:<password> docker://docker.io/library/alpine:latest docker://nexus-registry.apps.ocp4.sandbox595.opentlc.com/docker/alpine:unsigned
+
+2) Upload the image signed with the wrong key to nexus
+
+.. code:: bash
+
+  # skopeo copy --dest-creds=<username>:<password> --sign-by wrong@email.com docker://docker.io/library/busybox:latest docker://nexus-registry.apps.ocp4.sandbox595.opentlc.com/docker/busybox:wrongsig
+
+3) Upload the image signed with the correct gpg key to nexus
+
+.. code:: bash
+
+  # skopeo copy --dest-creds=<username>:<password> --sign-by demo@redhat.com docker://docker.io/library/centos:latest docker://nexus-registry.apps.ocp4.sandbox595.opentlc.com/docker/centos:signed
+
+After that, in this third case, the image signature needs to be uploaded to the signature server.
