@@ -2,7 +2,8 @@
 -- Handles API Requests in JSon form
 -- Body payload is expected in this form:
 --  {
---  "layerId": "<sha digest of the signed container layer>",
+--  "repoName": "base64-encoded name of the repo on the remote docker registry",
+--  "layerId": "base64-encoded sha digest of the signed container layer",
 --  "signatureData": "<base64-encoded signature of the image layer>"
 --  }
 -- signature is saved in a path of this kind:
@@ -10,15 +11,19 @@
 
 local cjson = require("cjson.safe")
 local ffi = require("ffi")
+local table = require("table")
 
 -- import native function sigs
 ffi.cdef[[
     int mkdir(const char *pathname, int mode);
+    int access(const char *path, int amode);
+    char *strerror(int errnum);
 ]]
 
 -- constants
-local destinationPath = "/tmp/"
-local payloadKeys = { "layerId", "signatureData" }
+local SEPARATOR = "/"
+local destinationPath = global_sigstore_path
+local payloadKeys = { "repoName", "layerId", "signatureData" }
 local parsedParams = {}
 
 -- helpers
@@ -33,14 +38,59 @@ local function validate_json_input(jsonPayload)
     return true
 end
 
-local function save_signature(imageHash, base64Payload)
-    local sigFullPath = destinationPath..imageHash
-    if type(sigFullPath) == "string" then
-        local result = ffi.C.mkdir(sigFullPath, tonumber("755", 8))
-        if result ~= 0 then
-            ngx.log(ngx.ERR, string(ffi.C.strerror(ffi.errno())))
-            ngx.exit(ngx.HTTP_INTERNAL_SERVER_ERROR)
+local function assert_exists(pathSpec)
+    return 0 == ffi.C.access(pathSpec, 0)
+end
+
+local function string_join(separator, ...)
+    return table.concat(table.pack(...), separator)
+end
+
+local function split_string(sourceString, separator)
+    if (type(sourceString) == "string") == false then
+        return nil
+    else
+        sourceString = sourceString:gsub("^/", ""):gsub("/$", "")
+        local chunks = {}
+        local startOfWord = 0
+        for index = 0, sourceString:len() do
+            if sourceString:sub(index, index) == separator then
+                table.insert(chunks, sourceString:sub(startOfWord, index - 1))
+                startOfWord = index + 1
+            end
         end
+        table.insert(chunks, sourceString:sub(startOfWord))
+        return chunks
+    end
+end
+
+local function make_dir(remoteName)
+    ngx.log(ngx.ERR, "MAKING: "..remoteName)
+    local result = ffi.C.mkdir(remoteName, tonumber("755", 8))
+    if result ~= 0 then
+        ngx.log(ngx.ERR, ffi.string(ffi.C.strerror(ffi.errno())))
+        ngx.exit(ngx.HTTP_INTERNAL_SERVER_ERROR)
+    end
+end
+
+local function create_pathspec(pathSpec)
+    local pathChunks = split_string(pathSpec, SEPARATOR)
+    local pathFragment = "/"..pathChunks[1]
+    for i = 2, #pathChunks do
+        if assert_exists(pathFragment) == false then
+            make_dir(pathFragment)
+        end
+        pathFragment = pathFragment .. SEPARATOR .. pathChunks[i]
+    end
+    if assert_exists(pathSpec) == false then
+        make_dir(pathSpec)
+    end
+end
+
+local function save_signature(remoteName, imageHash, base64Payload)
+    local sigFullPath = destinationPath .. SEPARATOR .. remoteName .. SEPARATOR ..imageHash
+    if type(sigFullPath) == "string" then
+        create_pathspec(sigFullPath)
 
         local saveDescriptor, error = io.open(sigFullPath.."/signature-1", "w")
         if saveDescriptor == nil then
@@ -69,7 +119,7 @@ else
 end
 
 -- save signature to disk and send response to caller
-save_signature(parsedParams.layerId, parsedParams.signatureData)
+save_signature(parsedParams.repoName, parsedParams.layerId, parsedParams.signatureData)
 
 -- return
 ngx.exit(ngx.HTTP_CREATED)
