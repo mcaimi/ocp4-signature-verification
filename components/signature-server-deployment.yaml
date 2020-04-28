@@ -1,0 +1,123 @@
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: signature-sa
+  namespace: signature-server
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: nginx-data-claim
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+  storageClassName: "gp2"
+
+---
+apiVersion: apps.openshift.io/v1
+kind: DeploymentConfig
+metadata:
+  name: signature-server
+spec:
+  replicas: 1
+  strategy:
+    type: Rolling
+  paused: false
+  revisionHistoryLimit: 10
+  minReadySeconds: 0
+  selector:
+      app: signature-server
+  template:
+    metadata:
+      labels:
+        app: signature-server
+    spec:
+      serviceAccountName: signature-sa
+      automountServiceAccountToken: true
+      triggers:
+        - type: ConfigChange
+      containers:
+      - image: docker.io/openresty/openresty:latest
+        imagePullPolicy: Always
+        name: signature-server-pod
+        resources: {}
+        volumeMounts:
+          - name: cachevol
+            mountPath: /var/cache/nginx/
+          - name: datavol
+            mountPath: /data/sigstore/
+          - name: nginx-sigstore-vhost
+            mountPath: /etc/nginx/conf.d/sigstore.conf
+            subPath: sigstore.conf
+          - name: lua-api-sources
+            mountPath: /etc/nginx/api/context_body.lua
+            subPath: context_body.lua
+          - name: lua-api-sources
+            mountPath: /etc/nginx/api/signature_upload.lua
+            subPath: signature_upload.lua
+      volumes:
+        - name: cachevol
+          emptyDir: {}
+        - name: datavol
+          persistentVolumeClaim:
+              claimName: nginx-data-claim
+        - name: nginx-sigstore-vhost
+          configMap:
+            name: nginx-sigstore-vhost
+            items:
+              - key: sigstore.conf
+                path: sigstore.conf
+        - name: lua-api-sources
+          configMap:
+            name: lua-api-sources
+            items:
+              - key: context_body.lua
+                path: context_body.lua
+              - key: signature_upload.lua
+                path: signature_upload.lua
+      dnsPolicy: ClusterFirst
+      restartPolicy: Always
+      schedulerName: default-scheduler
+      securityContext: {}
+      terminationGracePeriodSeconds: 30
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app: signature-server
+  name: signature-server-service
+spec:
+  ports:
+  - port: 80
+    protocol: TCP
+    targetPort: 8080
+  selector:
+    app: signature-server
+  sessionAffinity: None
+  type: ClusterIP
+
+---
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  annotations:
+    description: "Route for Pod Image Signature Repository"
+  labels:
+    app: signature-server
+  name: signature-server-route
+spec:
+  host: signature.apps.ocp4.sandbox595.opentlc.com
+  path: "/" 
+  to:
+    kind: Service
+    name: signature-server-service
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect
