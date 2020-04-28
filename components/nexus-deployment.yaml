@@ -1,0 +1,136 @@
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: nexus-sa
+  namespace: signature-server
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: nexus-claim
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 8Gi
+  storageClassName: "gp2"
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nexus
+  namespace: signature-server
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: nexus
+  template:
+    metadata:
+      labels:
+        app: nexus
+    spec:
+      serviceAccountName: nexus-sa
+      automountServiceAccountToken: true
+      containers:
+      - image: docker.io/sonatype/nexus3:latest
+        imagePullPolicy: Always
+        name: nexus
+        volumeMounts:
+          - mountPath: "/nexus-data"
+            name: nexus-volume
+        ports:
+        - containerPort: 8081
+          protocol: TCP
+        resources:
+          limits:
+            cpu: "2"
+            memory: "4Gi"
+          requests:
+            memory: "2Gi"
+            cpu: "1"
+      volumes:
+        - name: nexus-volume
+          persistentVolumeClaim:
+            claimName: nexus-claim
+      dnsPolicy: ClusterFirst
+      restartPolicy: Always
+      schedulerName: default-scheduler
+      securityContext: {}
+      terminationGracePeriodSeconds: 30
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: nexus-service
+  namespace: signature-server
+spec:
+  ports:
+  - port: 81
+    protocol: TCP
+    targetPort: 8081
+  selector:
+    app: nexus
+  sessionAffinity: None
+  type: ClusterIP
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: nexus-image-registry
+  namespace: signature-server
+spec:
+  ports:
+  - port: 81
+    protocol: TCP
+    targetPort: 8080
+  selector:
+    app: nexus
+  sessionAffinity: None
+  type: ClusterIP
+
+---
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  namespace: signature-server
+  annotations:
+    description: "Route for Sonatype Nexus Repository"
+  labels:
+    app: nexus
+  name: nexus-service
+spec:
+  host: nexus.apps.ocp4.sandbox595.opentlc.com
+  path: "/" 
+  to:
+    kind: Service
+    name: nexus-service
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect
+
+---
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  namespace: signature-server
+  annotations:
+    description: "Route for Sonatype Nexus Docker Repository"
+  labels:
+    app: nexus
+  name: nexus-image-registry
+spec:
+  host: nexus-registry.apps.ocp4.sandbox595.opentlc.com
+  path: "/" 
+  to:
+    kind: Service
+    name: nexus-image-registry
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect
