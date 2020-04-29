@@ -60,6 +60,9 @@ spec:
           - name: lua-api-sources
             mountPath: /etc/nginx/api/signature_upload.lua
             subPath: signature_upload.lua
+          - name: lua-api-sources
+            mountPath: /etc/nginx/api/filesystem.lua
+            subPath: filesystem.lua
       volumes:
         - name: cachevol
           emptyDir: {}
@@ -80,6 +83,8 @@ spec:
                 path: context_body.lua
               - key: signature_upload.lua
                 path: signature_upload.lua
+              - key: filesystem.lua
+                path: filesystem.lua
       dnsPolicy: ClusterFirst
       restartPolicy: Always
       schedulerName: default-scheduler
