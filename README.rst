@@ -279,3 +279,8 @@ The deployment is refused because although the image is correctly signed, the si
 
 This deployment is approved because the signature is correctly found on the sigstore and the verification succeeded with the configured public key.
 
+TODO
+----
+
+#) Write upload API client
+#) Integrate into a Jenkins pipeline
