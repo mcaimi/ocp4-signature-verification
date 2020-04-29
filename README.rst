@@ -1,5 +1,5 @@
-OPENSHIFT 4 IMAGE SIGNATURE VERIFICATION
-========================================
+OPENSHIFT 4 IMAGE SIGNATURE VERIFICATION WORK-IN-PROGRESS DEMO
+==============================================================
 
 With OpenShift 4, container image signatures can be verified at deploy time by configuring CRI-O to use GPG keys.
 This repo contains a walkthrough/demo of this feature and a simple solution to signature storage. This demo will use:
@@ -145,7 +145,7 @@ Container images signatures are served by a simple HTTP server (nginx) with a co
 
 .. code:: bash
 
-  # oc create configmap lua-api-sources --from-file=api/context_body.lua --from-file=api/signature_upload.lua
+  # oc create configmap lua-api-sources --from-file=api/context_body.lua --from-file=api/signature_upload.lua --from-file=api/filesystem.lua
 
 4) Deploy the signature server
 
@@ -162,22 +162,120 @@ This test makes use of three different small container images, to demonstrate th
 - An Image that has no signature
 - An Images that has been signed with an unknown/wrong GPG key
 
-1) Upload the image without signature to nexus
+Skopeo needs to be configured to store signatures in a known path, so that these can later be uploaded to a signature store:
+
+.. code:: bash
+
+  [...]
+  # This is the default signature write location for docker registries.
+  default-docker:
+  #  sigstore: file:///var/lib/containers/sigstore
+    sigstore-staging: file:///tmp/sigstore
+  [...]
+
+the 'sigstore-staging' parameter is used by skopeo. After a successful sign operation, the signature is stored under that path:
+
+.. code:: bash
+
+  # tree /tmp/sigstore
+  /tmp/sigstore/
+  └── docker
+      └── busybox@sha256=a2490cec4484ee6c1068ba3a05f89934010c85242f736280b35343483b2264b6
+          └── signature-1
+
+1) Upload an image without signature to nexus
 
 .. code:: bash
 
   # skopeo copy --dest-creds=<username>:<password> docker://docker.io/library/alpine:latest docker://nexus-registry.apps.ocp4.sandbox595.opentlc.com/docker/alpine:unsigned
 
-2) Upload the image signed with the wrong key to nexus
+2) Upload an image signed with the wrong key to nexus
 
 .. code:: bash
 
   # skopeo copy --dest-creds=<username>:<password> --sign-by wrong@email.com docker://docker.io/library/busybox:latest docker://nexus-registry.apps.ocp4.sandbox595.opentlc.com/docker/busybox:wrongsig
 
-3) Upload the image signed with the correct gpg key to nexus
+3) Upload an image signed with the correct gpg key to nexus
 
 .. code:: bash
 
   # skopeo copy --dest-creds=<username>:<password> --sign-by demo@redhat.com docker://docker.io/library/centos:latest docker://nexus-registry.apps.ocp4.sandbox595.opentlc.com/docker/centos:signed
 
 After that, in this third case, the image signature needs to be uploaded to the signature server.
+
+UPLOAD SIGNATURE TO KEYSTORE
+----------------------------
+
+Uploading signature is achieved by calling the /upload API endpoint served by the signature server. All parameters need to be base64-encoded.
+There is only one POST method implemented and that accepts a JSON payload:
+
+.. code:: json
+
+  {
+    "repoName": "base64-encoded name of the repo on the remote docker registry",
+    "layerId": "base64-encoded sha digest of the signed container layer",
+    "signatureData": "base64-encoded signature of the image layer"
+  }
+
+TESTING SIGNATURE VERIFICATION
+------------------------------
+
+1) Create the demo deploymentconfig
+
+.. code:: bash
+
+  # oc create -f components/demo-deployment.yaml
+
+2) Check out the "unsigned" container:
+
+.. code:: bash
+
+  # oc describe pod demo-unsigned-c5d8dddf6-5lkbs
+  [...]
+  Events:
+  Type     Reason     Age              From                                                 Message
+  ----     ------     ----             ----                                                 -------
+  Normal   Scheduled  <unknown>        default-scheduler                                    Successfully assigned signature-server/demo-unsigned-c5d8dddf6-5lkbs to ip-10-0-166-156.us-east-2.compute.internal
+  Normal   Pulling    10s              kubelet, ip-10-0-166-156.us-east-2.compute.internal  Pulling image "nexus-registry.apps.ocp4.sandbox595.opentlc.com/docker/alpine:unsigned"
+  Warning  Failed     10s              kubelet, ip-10-0-166-156.us-east-2.compute.internal  Failed to pull image "nexus-registry.apps.ocp4.sandbox595.opentlc.com/docker/alpine:unsigned": rpc error: code = Unknown desc = Source image rejected: A signature was required, but no signature exists
+  Warning  Failed     10s              kubelet, ip-10-0-166-156.us-east-2.compute.internal  Error: ErrImagePull
+  Normal   BackOff    8s (x2 over 9s)  kubelet, ip-10-0-166-156.us-east-2.compute.internal  Back-off pulling image "nexus-registry.apps.ocp4.sandbox595.opentlc.com/docker/alpine:unsigned"
+  Warning  Failed     8s (x2 over 9s)  kubelet, ip-10-0-166-156.us-east-2.compute.internal  Error: ImagePullBackOff
+
+The deployment is refused because images from nexus-registry need to be signed, but no signature has been uploaded to the sigstore for this image
+
+3) Check out the "wrongly signed" container:
+
+.. code:: bash
+
+  # oc describe pod demo-wrong-signature-68fb74b784-7tqmb
+  [...]
+    Events:
+  Type     Reason     Age                From                                                 Message
+  ----     ------     ----               ----                                                 -------
+  Normal   Scheduled  <unknown>          default-scheduler                                    Successfully assigned signature-server/demo-wrong-signature-68fb74b784-7tqmb to ip-10-0-166-156.us-east-2.compute.internal
+  Normal   BackOff    17s (x2 over 42s)  kubelet, ip-10-0-166-156.us-east-2.compute.internal  Back-off pulling image "nexus-registry.apps.ocp4.sandbox595.opentlc.com/docker/busybox:wrongsig"
+  Warning  Failed     17s (x2 over 42s)  kubelet, ip-10-0-166-156.us-east-2.compute.internal  Error: ImagePullBackOff
+  Normal   Pulling    5s (x3 over 43s)   kubelet, ip-10-0-166-156.us-east-2.compute.internal  Pulling image "nexus-registry.apps.ocp4.sandbox595.opentlc.com/docker/busybox:wrongsig"
+  Warning  Failed     5s (x3 over 43s)   kubelet, ip-10-0-166-156.us-east-2.compute.internal  Failed to pull image "nexus-registry.apps.ocp4.sandbox595.opentlc.com/docker/busybox:wrongsig": rpc error: code = Unknown desc = Source image rejected: Invalid GPG signature: gpgme.Signature{Summary:128, Fingerprint:"4F06789A5C76861E", Status:gpgme.Error{err:0x9}, Timestamp:time.Time{wall:0x0, ext:63723658926, loc:(*time.Location)(0x55f9f39502a0)}, ExpTimestamp:time.Time{wall:0x0, ext:62135596800, loc:(*time.Location)(0x55f9f39502a0)}, WrongKeyUsage:false, PKATrust:0x0, ChainModel:false, Validity:0, ValidityReason:error(nil), PubkeyAlgo:1, HashAlgo:8}
+  Warning  Failed     5s (x3 over 43s)   kubelet, ip-10-0-166-156.us-east-2.compute.internal  Error: ErrImagePull
+
+The deployment is refused because although the image is correctly signed, the signature cannot be verified because the signer private key used to sign the image does not match the public key used to verify the signature.
+
+4) Check out the "correctly signed" container:
+
+.. code:: bash
+
+  # oc describe pod demo-signed-6c784b5957-4gpt7
+  [...]
+  Events:
+  Type    Reason     Age        From                                                 Message
+  ----    ------     ----       ----                                                 -------
+  Normal  Scheduled  <unknown>  default-scheduler                                    Successfully assigned signature-server/demo-signed-6c784b5957-4gpt7 to ip-10-0-166-156.us-east-2.compute.internal
+  Normal  Pulling    14s        kubelet, ip-10-0-166-156.us-east-2.compute.internal  Pulling image "nexus-registry.apps.ocp4.sandbox595.opentlc.com/docker/centos:signed"
+  Normal  Pulled     14s        kubelet, ip-10-0-166-156.us-east-2.compute.internal  Successfully pulled image "nexus-registry.apps.ocp4.sandbox595.opentlc.com/docker/centos:signed"
+  Normal  Created    13s        kubelet, ip-10-0-166-156.us-east-2.compute.internal  Created container pause
+  Normal  Started    13s        kubelet, ip-10-0-166-156.us-east-2.compute.internal  Started container pause
+
+This deployment is approved because the signature is correctly found on the sigstore and the verification succeeded with the configured public key.
+
