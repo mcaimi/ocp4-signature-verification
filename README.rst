@@ -151,7 +151,7 @@ Container images signatures are served by a simple HTTP server (nginx) with a co
 
 .. code:: bash
 
-  # oc create -f components/signature-server-deploymentconfig.yaml
+  # oc create -f components/signature-server-deployment.yaml
 
 FETCH AND TEST IMAGE SIGNATURE
 ------------------------------
