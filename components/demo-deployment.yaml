@@ -1,0 +1,90 @@
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: demo-sa
+  namespace: signature-server
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: demo-signed
+  namespace: signature-server
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: demo
+  template:
+    metadata:
+      labels:
+        app: demo
+    spec:
+      serviceAccountName: demo-sa
+      automountServiceAccountToken: true
+      containers:
+      - image: nexus-registry.apps.ocp4.sandbox595.opentlc.com/docker/centos:signed
+        imagePullPolicy: Always
+        name: pause
+      dnsPolicy: ClusterFirst
+      restartPolicy: Always
+      schedulerName: default-scheduler
+      securityContext: {}
+      terminationGracePeriodSeconds: 30
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: demo-unsigned
+  namespace: signature-server
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: demo-unsigned
+  template:
+    metadata:
+      labels:
+        app: demo-unsigned
+    spec:
+      serviceAccountName: demo-sa
+      automountServiceAccountToken: true
+      containers:
+      - image: nexus-registry.apps.ocp4.sandbox595.opentlc.com/docker/alpine:unsigned
+        imagePullPolicy: Always
+        name: pause-unsigned
+      dnsPolicy: ClusterFirst
+      restartPolicy: Always
+      schedulerName: default-scheduler
+      securityContext: {}
+      terminationGracePeriodSeconds: 30
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: demo-wrong-signature
+  namespace: signature-server
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: demo-unsigned
+  template:
+    metadata:
+      labels:
+        app: demo-unsigned
+    spec:
+      serviceAccountName: demo-sa
+      automountServiceAccountToken: true
+      containers:
+      - image: nexus-registry.apps.ocp4.sandbox595.opentlc.com/docker/busybox:wrongsig
+        imagePullPolicy: Always
+        name: pause-unsigned
+      dnsPolicy: ClusterFirst
+      restartPolicy: Always
+      schedulerName: default-scheduler
+      securityContext: {}
+      terminationGracePeriodSeconds: 30
