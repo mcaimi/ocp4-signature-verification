@@ -43,6 +43,53 @@ PREREQUISITES
 
 .. image:: img/nexus-docker-repo.png
 
+6) If you are using a self-signed certificate on the ingress controllers, the local nexus needs to be added to the list of `insecure`_ registries:
+
+.. code:: bash
+
+  # oc edit image.config.openshift.io/cluster
+
+.. code:: yaml
+
+  apiVersion: config.openshift.io/v1
+  kind: Image
+  metadata:
+    annotations:
+      release.openshift.io/create-only: "true"
+    creationTimestamp: 2020-05-05T05:21:57Z
+    generation: 2
+    name: cluster
+    resourceVersion: "80728"
+    selfLink: /apis/config.openshift.io/v1/images/cluster
+    uid: 5576bd84-9e0c-4d67-9498-9c8cf523cbd2
+  spec:
+    registrySources:
+      insecureRegistries:
+      - nexus-registry.apps.ocp4.sandbox595.opentlc.com
+  status:
+    internalRegistryHostname: image-registry.openshift-image-registry.svc:5000
+
+The MachineConfigOperator monitors that resource for differences and applies the new config when appropriate.
+
+7) If the image registry created on nexus needs authentication, a pull secret needs to be created and linked to the correct ServiceAccount
+
+.. code:: bash 
+
+  # oc create secret docker-registry nexus-pull-secret --docker-server=nexus-registry.apps.ocp4.sandbox595.opentlc.com --docker-username=<username> --docker-password=<password> --docker-email=unused
+
+For example, if the 'demo-sa' is used to deploy pods with a deploymentConfig, this pull secret needs to be linked to that SA:
+
+.. code:: bash
+
+  # oc create sa demo-sa
+  # oc secrets link demo-sa nexus-pull-secret --for=pull
+
+To assign the pull secret to the 'default' service account (the SA that is used when no other is specified):
+
+.. code:: bash
+
+  # oc secrets link default nexus-pull-secret --for=pull
+
 CONFIGURE OPENSHIFT NODES
 -------------------------
 
@@ -294,3 +341,5 @@ TODO
 
 #) Integrate into a Jenkins pipeline
 #) Make the scripts/manifests more generically usable, as for example domains are for now hardcoded in code.
+
+.. _insecure: https://docs.openshift.com/container-platform/4.3/openshift_images/image-configuration.html
