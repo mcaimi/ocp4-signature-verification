@@ -24,7 +24,7 @@ class Wrapper():
     def __init__(self, hash_info):
         if not (hash_info.__class__ == dict):
             raise MalformedArgumentException("Parameter class is not Hash, got [%s]" % hash_info.__class__)
-        
+
         self._wrap(hash_info)
 
     def _wrap(self, infos):
@@ -43,13 +43,13 @@ class Wrapper():
     def build_payload(self):
         path_components = [ item for item in self.sig_file.split("/")[-3:]]
 
-        with open(self.sig_file) as sf:
+        with open(self.sig_file, "rb") as sf:
             self.payload = {
                 'repoName': base64.b64encode(path_components[0].encode("utf8")).decode("utf8"),
                 'layerId': base64.b64encode(path_components[1].encode("utf8")).decode("utf8"),
-                'signatureData': base64.b64encode(sf.read().encode("utf8")).decode("utf8")
+                'signatureData': base64.b64encode(sf.read()).decode()
             }
-        
+
         return self.payload
 
 ALLOWED_PROTOS = [ "http", "https" ]
