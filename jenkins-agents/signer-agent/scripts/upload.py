@@ -60,6 +60,8 @@ class Parser():
         self.parser = ArgumentParser(argument_default=SUPPRESS)
         self.parser.add_argument('-r', '--repo_url', dest='repo_url', default="http://signature.apps.kubernetes.local", help="Signature server API endpoint")
         self.parser.add_argument('-a', '--absolute-path', dest='sig_path', help="The *absolute* path to the signature-1 file in the local sigstore")
+        self.parser.add_argument('--no-verify', dest='ssl_verify', action='store_false', help="Disables SSL Verification. If not specified, defaults to True")
+        self.parser.set_defaults(ssl_verify=True)
 
         self.parsed_arguments = self.parser.parse_args()
 
@@ -101,7 +103,8 @@ class Parser():
 
         return Wrapper({ 
             'repo_url': self.repo_url,
-            'sig_file': self.sig_file
+            'sig_file': self.sig_file,
+            'ssl_verify': self.parsed_arguments.ssl_verify
             })
 
 if __name__ == "__main__":
@@ -112,7 +115,7 @@ if __name__ == "__main__":
         payload = upload_data.build_payload()
 
         print("POST to %s [PAYLOAD %s]" % (upload_data.repo_url, payload))
-        result = requests.post(upload_data.repo_url, data=json.dumps(payload), verify=False)
+        result = requests.post(upload_data.repo_url, data=json.dumps(payload), verify=upload_data.ssl_verify)
         print("RESULT [%s]", result)
         
         sys.exit(0)
