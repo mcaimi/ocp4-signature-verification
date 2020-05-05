@@ -41,6 +41,8 @@ PREREQUISITES
 
 5) On the nexus web interface, create a new Hosted Docker repository.
 
+.. image:: img/nexus-docker-repo.png
+
 CONFIGURE OPENSHIFT NODES
 -------------------------
 
@@ -282,5 +284,5 @@ This deployment is approved because the signature is correctly found on the sigs
 TODO
 ----
 
-#) Write upload API client
 #) Integrate into a Jenkins pipeline
+#) Make the scripts/manifests more generically usable, as for example domains are for now hardcoded in code.
