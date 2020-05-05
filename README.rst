@@ -219,6 +219,14 @@ There is only one POST method implemented and that accepts a JSON payload:
     "signatureData": "base64-encoded signature of the image layer"
   }
 
+An helper script is provided under jenkins-agents/signer-agent/scripts:
+
+.. code:: bash
+
+  # ./jenkins-agents/signer-agent/scripts/upload.py -r https://signature.apps.ocp4.sandbox595.opentlc.com/upload -a /tmp/sigstore/docker/busybox@sha256=a2490cec4484ee6c1068ba3a05f89934010c85242f736280b35343483b2264b6/signature-1
+
+this script takes the absolute path to the local signature of the container, builds the json payload and sends that to the signature server via a POST HTTP call.
+
 TESTING SIGNATURE VERIFICATION
 ------------------------------
 
