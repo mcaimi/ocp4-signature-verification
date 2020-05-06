@@ -9,6 +9,8 @@ This repo contains a walkthrough/demo of this feature and a simple solution to s
 - GPG to sign/verify container images
 - NGINX + LuaJIT as the application framework (OpenResty)
 
+Signatures can also be stored inside Nexus, so if this is the intended workflow, the NGINX signature server is not required.
+
 PREREQUISITES
 -------------
 
@@ -270,9 +272,38 @@ An helper script is provided under jenkins-agents/signer-agent/scripts:
 
 .. code:: bash
 
-  # ./jenkins-agents/signer-agent/scripts/upload.py -r https://signature.apps.ocp4.sandbox595.opentlc.com/upload -a /tmp/sigstore/docker/busybox@sha256=a2490cec4484ee6c1068ba3a05f89934010c85242f736280b35343483b2264b6/signature-1
+  # ./clients/upload.py -r https://signature.apps.ocp4.sandbox595.opentlc.com/upload -a /tmp/sigstore/docker/busybox@sha256=a2490cec4484ee6c1068ba3a05f89934010c85242f736280b35343483b2264b6/signature-1
 
 this script takes the absolute path to the local signature of the container, builds the json payload and sends that to the signature server via a POST HTTP call.
+
+UPLOAD SIGNATURES TO NEXUS
+--------------------------
+
+RAW Repositories in Nexus3 can also host image signature files, so instead of deploying a separate signature server, the same Nexus used to store container images can be used to store signatures too.
+
+1) Create a RAW hosted repository called 'sigstore'
+
+.. image:: img/raw_repository.png
+
+2) Enable anonymous access
+
+.. image:: img/anonymous_access.png
+
+This is needed since in this demo CRI-O is configured without authentication support. Keep in mind that upload on the other hand *needs authentication*.
+
+3) Sign and upload the image as shown in previous paragraphs and then upload the signature to nexus
+
+.. code:: bash
+
+  # ./clients/signature-upload.py -r https://nexus.apps.ocp4.sandbox595.opentlc.com -a /tmp/sigstore/docker/busybox@sha256=a2490cec4484ee6c1068ba3a05f89934010c85242f736280b35343483b2264b6/signature-1 --no-verify --nexus -s sigstore -u <username> -p <password>
+
+4) Update the repository configuration to use Nexus instead of the HTTP signature server and update the MachineConfig manifests:
+
+.. code:: yaml
+
+    docker:
+        nexus-registry.apps.ocp4.sandbox595.opentlc.com:
+            sigstore: https://nexus.apps.ocp4.sandbox595.opentlc.com/repository/sigstore
 
 TESTING SIGNATURE VERIFICATION
 ------------------------------
@@ -341,5 +372,7 @@ TODO
 
 #) Integrate into a Jenkins pipeline
 #) Make the scripts/manifests more generically usable, as for example domains are for now hardcoded in code.
+#) Improve scripts
+#) Improve documentation
 
 .. _insecure: https://docs.openshift.com/container-platform/4.3/openshift_images/image-configuration.html
