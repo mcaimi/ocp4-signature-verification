@@ -1,5 +1,5 @@
-OPENSHIFT 4 IMAGE SIGNATURE VERIFICATION WIP DEMO
-==============================================================
+OPENSHIFT 4 IMAGE SIGNATURE VERIFICATION WIP DEMO CUSTOM-ONLY BRANCH
+====================================================================
 
 With OpenShift 4, container image signatures can be verified at deploy time by configuring CRI-O to use GPG keys.
 This repo contains a walkthrough/demo of this feature and a simple solution to signature storage. This demo will use:
@@ -10,7 +10,8 @@ This repo contains a walkthrough/demo of this feature and a simple solution to s
 - NGINX + LuaJIT as the application framework (OpenResty)
 
 Signatures can also be stored inside Nexus, so if this is the intended workflow, the NGINX signature server is not required.
-Also, gpg signature verification is enabled for official RedHat repositories.
+This branch contains machineconfig scripts that only configure GPG signature verification with a custom external images repository.
+RedHat official registries are left unverified. Please refer to the master branch if GPG signature verification is needed also for official images.
 
 PREREQUISITES
 -------------
@@ -156,11 +157,11 @@ Configuration files are automatically rendered with the provided 'gen-machinecon
 
 Create a file like this for all custom/official repositories enumerated in the policy.json file and that need GPG signature verification.
 
-2) Generate the MachineConfig manifests with the provided script (under machineconfig/)
+2) Generate the MachineConfig manifests with the provided script (under machineconfig/). Provide the path to the public key name, the name of the external repository yaml file that will be created and the sigstore URL linked to that repository:
 
 .. code:: bash
 
-  # ./gen-machineconfig.sh -k /path/to/nexus-key.gpg -r /path/to/nexus-registry.apps.ocp4.sandbox595.opentlc.com.yaml
+  # ./gen-machineconfig.sh -k /path/to/nexus-key.gpg -r /path/to/nexus-registry.apps.ocp4.sandbox595.opentlc.com.yaml -s https://sigstore.url.com/sigstore
 
 This will create two MachineConfig manifest files under the ./rendered/ folder:
 
