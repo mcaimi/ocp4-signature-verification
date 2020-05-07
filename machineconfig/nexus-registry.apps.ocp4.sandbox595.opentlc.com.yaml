@@ -1,3 +1,0 @@
-docker:
-     nexus-registry.apps.ocp4.sandbox595.opentlc.com:
-         sigstore: https://signature.apps.ocp4.sandbox595.opentlc.com/sigstore

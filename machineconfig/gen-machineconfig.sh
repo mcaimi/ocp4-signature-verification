@@ -1,7 +1,7 @@
 #!/bin/bash
 
 function usage() { 
-  echo "Syntax: $0 -k <pubkey_filename> -r <external_repository_filename>"
+  echo "Syntax: $0 -k <pubkey_filename> -r <external_repository_filename> -s <sigstore_url_for_external_repo>"
   exit 1
 }
 
@@ -9,7 +9,7 @@ OUTPUT_DIR=$PWD/rendered
 
 [[ ! -d $OUTPUT_DIR ]] && mkdir -p $OUTPUT_DIR
 [[ $# -gt 0 ]] || usage
-while getopts ":k:r:" options; do
+while getopts ":k:r:s:" options; do
     case "${options}" in
       k)
         keyfile=${OPTARG}
@@ -21,12 +21,21 @@ while getopts ":k:r:" options; do
         fi
         ;;
       r)
-        repofile=${OPTARG}
-        if [[ ! -f "${repofile}" ]]; then
-          echo "Specified repository file does not exist (${repofile})"
+        reponame=${OPTARG}
+        if [[ -z  "${reponame}" ]]; then
+          echo "Repository name cannot be empty"
           exit 1
         else
-          echo "Adding external images repository: ${repofile}"
+          echo "Adding external images repository: ${reponame}"
+        fi
+        ;;
+      s)
+        sigstore=${OPTARG}
+        if [[ -z "${sigstore}" ]]; then
+          echo "Sigstore URL is mandatory"
+          exit 1
+        else
+          echo "Using sigstore URL: ${sigstore}"
         fi
         ;;
       :)
@@ -40,13 +49,18 @@ while getopts ":k:r:" options; do
 done
 shift $((OPTIND-1))
 [[ -z "${keyfile}" ]] && usage
-[[ -z "${repofile}" ]] && usage
+[[ -z "${reponame}" ]] && usage
+[[ -z "${sigstore}" ]] && usage
 
-export ARC_REG=$( cat registry.access.redhat.com.yaml | base64 -w0 )
-export RIO_REG=$( cat registry.redhat.io.yaml | base64 -w0 )
-export NEXUS_REG=$( cat ${repofile} | base64 -w0 )
 export GPG_PUB_KEY=$( cat ${keyfile} | base64 -w0 )
-export CUSTOM_REG_NAME=$(basename ${repofile} .yaml)
+export CUSTOM_REG_NAME=$(basename ${reponame} .yaml)
+
+cat > /tmp/${CUSTOM_REG_NAME}.yaml <<EOF
+docker:
+     ${CUSTOM_REG_NAME}:
+         sigstore: ${sigstore}
+EOF
+export NEXUS_REG=$( cat /tmp/${CUSTOM_REG_NAME}.yaml | base64 -w0 )
 
 # Render policy.json
 export POLICY_CONFIG=$( cat policy.json | envsubst | base64 -w0 )
@@ -72,18 +86,6 @@ spec:
     passwd: {}
     storage:
       files:
-      - contents:
-          source: data:text/plain;charset=utf-8;base64,${ARC_REG}
-          verification: {}
-        filesystem: root
-        mode: 420
-        path: /etc/containers/registries.d/registry.access.redhat.com.yaml
-      - contents:
-          source: data:text/plain;charset=utf-8;base64,${RIO_REG}
-          verification: {}
-        filesystem: root
-        mode: 420
-        path: /etc/containers/registries.d/registry.redhat.io.yaml
       - contents:
           source: data:text/plain;charset=utf-8;base64,${NEXUS_REG}
           verification: {}
@@ -126,18 +128,6 @@ spec:
     passwd: {}
     storage:
       files:
-      - contents:
-          source: data:text/plain;charset=utf-8;base64,${ARC_REG}
-          verification: {}
-        filesystem: root
-        mode: 420
-        path: /etc/containers/registries.d/registry.access.redhat.com.yaml
-      - contents:
-          source: data:text/plain;charset=utf-8;base64,${RIO_REG}
-          verification: {}
-        filesystem: root
-        mode: 420
-        path: /etc/containers/registries.d/registry.redhat.io.yaml
       - contents:
           source: data:text/plain;charset=utf-8;base64,${NEXUS_REG}
           verification: {}
