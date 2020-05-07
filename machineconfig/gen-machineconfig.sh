@@ -1,13 +1,15 @@
 #!/bin/bash
 
 function usage() { 
-  echo "Syntax: $0 [-k <pubkey_filename>]"
+  echo "Syntax: $0 -k <pubkey_filename> -r <external_repository_filename>"
   exit 1
 }
 
-[[ ! -d rendered ]] && mkdir rendered
+OUTPUT_DIR=$PWD/rendered
+
+[[ ! -d $OUTPUT_DIR ]] && mkdir -p $OUTPUT_DIR
 [[ $# -gt 0 ]] || usage
-while getopts ":k:" options; do
+while getopts ":k:r:" options; do
     case "${options}" in
       k)
         keyfile=${OPTARG}
@@ -16,6 +18,15 @@ while getopts ":k:" options; do
           exit 1
         else
           echo "Using Keyfile: ${keyfile}"
+        fi
+        ;;
+      r)
+        repofile=${OPTARG}
+        if [[ ! -f "${repofile}" ]]; then
+          echo "Specified repository file does not exist (${repofile})"
+          exit 1
+        else
+          echo "Adding external images repository: ${repofile}"
         fi
         ;;
       :)
@@ -28,16 +39,21 @@ while getopts ":k:" options; do
     esac
 done
 shift $((OPTIND-1))
+[[ -z "${keyfile}" ]] && usage
+[[ -z "${repofile}" ]] && usage
 
 export ARC_REG=$( cat registry.access.redhat.com.yaml | base64 -w0 )
 export RIO_REG=$( cat registry.redhat.io.yaml | base64 -w0 )
-export NEXUS_REG=$( cat nexus-registry.apps.ocp4.sandbox595.opentlc.com.yaml | base64 -w0 )
+export NEXUS_REG=$( cat ${repofile} | base64 -w0 )
 export GPG_PUB_KEY=$( cat ${keyfile} | base64 -w0 )
-export POLICY_CONFIG=$( cat policy.json | base64 -w0 )
+export CUSTOM_REG_NAME=$(basename ${repofile} .yaml)
+
+# Render policy.json
+export POLICY_CONFIG=$( cat policy.json | envsubst | base64 -w0 )
 
 # Worker MachineConfig manifest
-echo "Rendering rendered/02-worker-rh-registry-trust.yaml..."
-cat > rendered/02-worker-rh-registry-trust.yaml <<EOF
+echo "Rendering $OUTPUT_DIR/02-worker-rh-registry-trust.yaml..."
+cat > $OUTPUT_DIR/02-worker-rh-registry-trust.yaml <<EOF
 apiVersion: machineconfiguration.openshift.io/v1
 kind: MachineConfig
 metadata:
@@ -73,7 +89,7 @@ spec:
           verification: {}
         filesystem: root
         mode: 420
-        path: /etc/containers/registries.d/nexus-registry.apps.ocp4.sandbox595.opentlc.com.yaml
+        path: /etc/containers/registries.d/${CUSTOM_REG_NAME}.yaml
       - contents:
           source: data:text/plain;charset=utf-8;base64,${GPG_PUB_KEY}
           verification: {}
@@ -90,8 +106,8 @@ spec:
 EOF
 
 # Master MachineConfig manifest
-echo "Rendering rendered/02-master-rh-registry-trust.yaml..."
-cat > rendered/02-master-rh-registry-trust.yaml <<EOF
+echo "Rendering $OUTPUT_DIR/02-master-rh-registry-trust.yaml..."
+cat > $OUTPUT_DIR/02-master-rh-registry-trust.yaml <<EOF
 apiVersion: machineconfiguration.openshift.io/v1
 kind: MachineConfig
 metadata:
@@ -127,7 +143,7 @@ spec:
           verification: {}
         filesystem: root
         mode: 420
-        path: /etc/containers/registries.d/nexus-registry.apps.ocp4.sandbox595.opentlc.com.yaml
+        path: /etc/containers/registries.d/${CUSTOM_REG_NAME}.yaml
       - contents:
           source: data:text/plain;charset=utf-8;base64,${GPG_PUB_KEY}
           verification: {}

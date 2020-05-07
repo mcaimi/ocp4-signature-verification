@@ -20,7 +20,7 @@
           "keyPath": "/etc/pki/rpm-gpg/RPM-GPG-KEY-redhat-release"
         }
       ],
-      "nexus-registry.apps.ocp4.sandbox595.opentlc.com": [
+      "${CUSTOM_REG_NAME}": [
         {
           "type": "signedBy",
           "keyType": "GPGKeys",
