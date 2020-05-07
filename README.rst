@@ -1,4 +1,4 @@
-OPENSHIFT 4 IMAGE SIGNATURE VERIFICATION WORK-IN-PROGRESS DEMO
+OPENSHIFT 4 IMAGE SIGNATURE VERIFICATION WIP DEMO
 ==============================================================
 
 With OpenShift 4, container image signatures can be verified at deploy time by configuring CRI-O to use GPG keys.
@@ -10,6 +10,7 @@ This repo contains a walkthrough/demo of this feature and a simple solution to s
 - NGINX + LuaJIT as the application framework (OpenResty)
 
 Signatures can also be stored inside Nexus, so if this is the intended workflow, the NGINX signature server is not required.
+Also, gpg signature verification is enabled for official RedHat repositories.
 
 PREREQUISITES
 -------------
@@ -98,7 +99,8 @@ CONFIGURE OPENSHIFT NODES
 This demo uses a local instance of Nexus as an external image repository. We want images coming from that repo to be signed and verified.
 Worker (and masters optionally) nodes in an OCP cluster need to be made aware of a new repo that requires signature verification.
 
-1) Configure a policy.json file with all repositories that need signature verification. Specify the public key path every repo section:
+The policy.json file will contain all repositories that need signature verification.
+For example, the resulting policy.json file will look like this with the custom 'nexus-registry.apps.ocp4.sandbox595.opentlc.com' repository added in:
 
 .. code:: json
 
@@ -142,7 +144,9 @@ Worker (and masters optionally) nodes in an OCP cluster need to be made aware of
       }
     }
 
-2) Create a configuration file for every repo and fill in the address of the HTTP server that will host the signatures:
+Configuration files are automatically rendered with the provided 'gen-machineconfig.sh' script.
+
+1) Create a configuration file for every repo and fill in the address of the HTTP server that will host the signatures:
 
 .. code:: yaml
 
@@ -150,13 +154,13 @@ Worker (and masters optionally) nodes in an OCP cluster need to be made aware of
         nexus-registry.apps.ocp4.sandbox595.opentlc.com:
             sigstore: https://signature.apps.ocp4.sandbox595.opentlc.com/sigstore
 
-Create a file like this for all repositories mentioned in the policy.json file modified at step 1
+Create a file like this for all custom/official repositories enumerated in the policy.json file and that need GPG signature verification.
 
-3) Generate the MachineConfig manifests with the provided script (under machineconfig/)
+2) Generate the MachineConfig manifests with the provided script (under machineconfig/)
 
 .. code:: bash
 
-  # ./gen-machineconfig.sh -k /path/to/nexus-key.gpg
+  # ./gen-machineconfig.sh -k /path/to/nexus-key.gpg -r /path/to/nexus-registry.apps.ocp4.sandbox595.opentlc.com.yaml
 
 This will create two MachineConfig manifest files under the ./rendered/ folder:
 
@@ -275,6 +279,12 @@ An helper script is provided under jenkins-agents/signer-agent/scripts:
   # ./clients/upload.py -r https://signature.apps.ocp4.sandbox595.opentlc.com/upload -a /tmp/sigstore/docker/busybox@sha256=a2490cec4484ee6c1068ba3a05f89934010c85242f736280b35343483b2264b6/signature-1
 
 this script takes the absolute path to the local signature of the container, builds the json payload and sends that to the signature server via a POST HTTP call.
+Also, this script makes use of the python3 interpreter so a linux distro that supports at least:
+
+#) A fairly recent version of python3
+#) The python-requests library for python3
+
+is absolutely mandatory.
 
 UPLOAD SIGNATURES TO NEXUS
 --------------------------
