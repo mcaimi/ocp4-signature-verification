@@ -36,17 +36,23 @@ PREREQUISITES
 
     # gpg --armor --export demo@redhat.com > nexus-key.gpg
 
-4) Deploy an instance of Nexus
+4) Generate another GPG Key that will be used to simulate a wrongly signed image
+
+.. code:: bash
+
+    # gpg --quick-gen-key wrong@redhat.com
+
+5) Deploy an instance of Nexus
 
 .. code:: bash
 
     # oc create -f components/nexus-deployment.yaml
 
-5) On the nexus web interface, create a new Hosted Docker repository.
+6) On the nexus web interface, create a new Hosted Docker repository.
 
 .. image:: img/nexus-docker-repo.png
 
-6) If you are using a self-signed certificate on the ingress controllers, the local nexus needs to be added to the list of `insecure`_ registries:
+7) If you are using a self-signed certificate on the ingress controllers, the local nexus needs to be added to the list of `insecure`_ registries:
 
 .. code:: bash
 
@@ -68,17 +74,18 @@ PREREQUISITES
   spec:
     registrySources:
       insecureRegistries:
-      - nexus-registry.apps.ocp4.sandbox595.opentlc.com
+      - nexus-registry.apps.<ingress domain associated with the openshift cluster>
   status:
     internalRegistryHostname: image-registry.openshift-image-registry.svc:5000
 
 The MachineConfigOperator monitors that resource for differences and applies the new config when appropriate.
 
-7) If the image registry created on nexus needs authentication, a pull secret needs to be created and linked to the correct ServiceAccount
+8) If the image registry created on nexus needs authentication, a pull secret needs to be created and linked to the correct ServiceAccount
 
 .. code:: bash 
 
-  # oc create secret docker-registry nexus-pull-secret --docker-server=nexus-registry.apps.ocp4.sandbox595.opentlc.com --docker-username=<username> --docker-password=<password> --docker-email=unused
+  # oc new-project signature-demo
+  # oc create secret docker-registry nexus-pull-secret --docker-server=nexus-registry.apps.<ingress domain associated with the openshift cluster> --docker-username=<username> --docker-password=<password> --docker-email=unused
 
 For example, if the 'demo-sa' is used to deploy pods with a deploymentConfig, this pull secret needs to be linked to that SA:
 
@@ -100,7 +107,7 @@ This demo uses a local instance of Nexus as an external image repository. We wan
 Worker (and masters optionally) nodes in an OCP cluster need to be made aware of a new repo that requires signature verification.
 
 The policy.json file will contain all repositories that need signature verification.
-For example, the resulting policy.json file will look like this with the custom 'nexus-registry.apps.ocp4.sandbox595.opentlc.com' repository added in:
+For example, the resulting policy.json file will look like this with the custom 'nexus-registry.apps.<ingress domain associated with the openshift cluster>' repository added in:
 
 .. code:: json
 
@@ -126,7 +133,7 @@ For example, the resulting policy.json file will look like this with the custom 
               "keyPath": "/etc/pki/rpm-gpg/RPM-GPG-KEY-redhat-release"
             }
           ],
-          "nexus-registry.apps.ocp4.sandbox595.opentlc.com": [
+          "nexus-registry.apps.<ingress domain associated with the openshift cluster>": [
             {
               "type": "signedBy",
               "keyType": "GPGKeys",
@@ -151,8 +158,8 @@ Configuration files are automatically rendered with the provided 'gen-machinecon
 .. code:: yaml
 
     docker:
-        nexus-registry.apps.ocp4.sandbox595.opentlc.com:
-            sigstore: https://signature.apps.ocp4.sandbox595.opentlc.com/sigstore
+        nexus-registry.apps.<ingress domain associated with the openshift cluster>:
+            sigstore: https://signature.apps.<ingress domain associated with the openshift cluster>/sigstore
 
 Create a file like this for all custom/official repositories enumerated in the policy.json file and that need GPG signature verification.
 
@@ -160,7 +167,7 @@ Create a file like this for all custom/official repositories enumerated in the p
 
 .. code:: bash
 
-  # ./gen-machineconfig.sh -k /path/to/nexus-key.gpg -r /path/to/nexus-registry.apps.ocp4.sandbox595.opentlc.com.yaml
+  # ./gen-machineconfig.sh -k /path/to/nexus-key.gpg -r /path/to/nexus-registry.apps.<ingress domain associated with the openshift cluster>.yaml
 
 This will create two MachineConfig manifest files under the ./rendered/ folder:
 
@@ -242,19 +249,19 @@ the 'sigstore-staging' parameter is used by skopeo. After a successful sign oper
 
 .. code:: bash
 
-  # skopeo copy --dest-creds=<username>:<password> docker://docker.io/library/alpine:latest docker://nexus-registry.apps.ocp4.sandbox595.opentlc.com/docker/alpine:unsigned
+  # skopeo copy --dest-creds=<username>:<password> docker://docker.io/library/alpine:latest docker://nexus-registry.apps.<ingress domain associated with the openshift cluster>/docker/alpine:unsigned
 
 2) Upload an image signed with the wrong key to nexus
 
 .. code:: bash
 
-  # skopeo copy --dest-creds=<username>:<password> --sign-by wrong@email.com docker://docker.io/library/busybox:latest docker://nexus-registry.apps.ocp4.sandbox595.opentlc.com/docker/busybox:wrongsig
+  # skopeo copy --dest-creds=<username>:<password> --sign-by wrong@email.com docker://docker.io/library/busybox:latest docker://nexus-registry.apps.<ingress domain associated with the openshift cluster>/docker/busybox:wrongsig
 
 3) Upload an image signed with the correct gpg key to nexus
 
 .. code:: bash
 
-  # skopeo copy --dest-creds=<username>:<password> --sign-by demo@redhat.com docker://docker.io/library/centos:latest docker://nexus-registry.apps.ocp4.sandbox595.opentlc.com/docker/centos:signed
+  # skopeo copy --dest-creds=<username>:<password> --sign-by demo@redhat.com docker://docker.io/library/centos:latest docker://nexus-registry.apps.<ingress domain associated with the openshift cluster>/docker/centos:signed
 
 After that, in this third case, the image signature needs to be uploaded to the signature server.
 
@@ -276,7 +283,7 @@ An helper script is provided under jenkins-agents/signer-agent/scripts:
 
 .. code:: bash
 
-  # ./clients/upload.py -r https://signature.apps.ocp4.sandbox595.opentlc.com/upload -a /tmp/sigstore/docker/busybox@sha256=a2490cec4484ee6c1068ba3a05f89934010c85242f736280b35343483b2264b6/signature-1
+  # ./clients/signature-upload.py -r https://signature.apps.<ingress domain associated with the openshift cluster>/upload -a /tmp/sigstore/docker/busybox@sha256=a2490cec4484ee6c1068ba3a05f89934010c85242f736280b35343483b2264b6/signature-1
 
 this script takes the absolute path to the local signature of the container, builds the json payload and sends that to the signature server via a POST HTTP call.
 Also, this script makes use of the python3 interpreter so a linux distro that supports at least:
@@ -286,8 +293,8 @@ Also, this script makes use of the python3 interpreter so a linux distro that su
 
 is absolutely mandatory.
 
-UPLOAD SIGNATURES TO NEXUS
---------------------------
+UPLOAD SIGNATURES TO NEXUS (OPTIONAL)
+-------------------------------------
 
 RAW Repositories in Nexus3 can also host image signature files, so instead of deploying a separate signature server, the same Nexus used to store container images can be used to store signatures too.
 
@@ -305,15 +312,15 @@ This is needed since in this demo CRI-O is configured without authentication sup
 
 .. code:: bash
 
-  # ./clients/signature-upload.py -r https://nexus.apps.ocp4.sandbox595.opentlc.com -a /tmp/sigstore/docker/busybox@sha256=a2490cec4484ee6c1068ba3a05f89934010c85242f736280b35343483b2264b6/signature-1 --no-verify --nexus -s sigstore -u <username> -p <password>
+  # ./clients/signature-upload.py -r https://nexus.apps.<ingress domain associated with the openshift cluster> -a /tmp/sigstore/docker/busybox@sha256=a2490cec4484ee6c1068ba3a05f89934010c85242f736280b35343483b2264b6/signature-1 --no-verify --nexus -s sigstore -u <username> -p <password>
 
 4) Update the repository configuration to use Nexus instead of the HTTP signature server and update the MachineConfig manifests:
 
 .. code:: yaml
 
     docker:
-        nexus-registry.apps.ocp4.sandbox595.opentlc.com:
-            sigstore: https://nexus.apps.ocp4.sandbox595.opentlc.com/repository/sigstore
+        nexus-registry.apps.<ingress domain associated with the openshift cluster>:
+            sigstore: https://nexus.apps.<ingress domain associated with the openshift cluster>/repository/sigstore
 
 TESTING SIGNATURE VERIFICATION
 ------------------------------
@@ -322,6 +329,7 @@ TESTING SIGNATURE VERIFICATION
 
 .. code:: bash
 
+  # oc project signature-demo
   # oc create -f components/demo-deployment.yaml
 
 2) Check out the "unsigned" container:
@@ -382,7 +390,8 @@ TODO
 
 #) Integrate into a Jenkins pipeline
 #) Make the scripts/manifests more generically usable, as for example domains are for now hardcoded in code.
-#) Improve scripts
+#) Remove shell scripts, migrate to Helm
 #) Improve documentation
 
 .. _insecure: https://docs.openshift.com/container-platform/4.3/openshift_images/image-configuration.html
+
